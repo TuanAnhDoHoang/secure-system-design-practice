@@ -1,0 +1,39 @@
+version: '3.8'
+services:
+  surrealdb:
+    image: surrealdb/surreal:latest
+    container_name: surrealdb
+    ports:
+      - "8000:8000" # HTTP
+      - "9000:9000" # HTTP (optional)
+      - "8080:8080" # WS
+    environment:
+      SURREAL_ENV: "dev"
+      SURREAL_KV: "memory"
+    command: start --user root --pass root --file /surreal/data
+    volumes:
+      - ./surreal_data:/surreal/data
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  server:
+    build: .
+    container_name: sso-server
+    depends_on:
+      - surrealdb
+      - redis
+    environment:
+      SURREALDB_HOST: surrealdb
+      SURREALDB_PORT: 8080
+      SURREALDB_USERNAME: root
+      SURREALDB_PASSWORD: root
+      SURREALDB_NAMESPACE: test
+      SURREALDB_NAME: test
+      VERIFICATION_LINK: "http://localhost:3000/verify"
+      HOST_URL: "http://localhost:3000"
+    ports:
+      - "3000:3000"
