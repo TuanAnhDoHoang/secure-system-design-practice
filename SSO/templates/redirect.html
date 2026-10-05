@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Đang chuyển hướng về {{ client_name }} - IdP Portal{% endblock %}
+
+{% block page_heading %}Đang chuyển hướng an toàn{% endblock %}
+{% block page_subheading %}Xác thực hoàn tất, bạn đang được chuyển tiếp về ứng dụng <strong>{{ client_name }}</strong>{% endblock %}
+
+{% block head %}
+<!-- Fallback meta refresh for noscript/clients blocking JS -->
+<noscript>
+    <meta http-equiv="refresh" content="3;url={{ redirect_uri }}">
+</noscript>
+
+<style>
+    .redirect-visual {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 0;
+    }
+
+    .spinner {
+        width: 56px;
+        height: 56px;
+        border: 3px solid rgba(59, 130, 246, 0.15);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 0.9s cubic-bezier(0.55, 0.15, 0.45, 0.85) infinite;
+        margin-bottom: 1.5rem;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .redirect-status {
+        font-size: 0.9375rem;
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .pulse-dot {
+        width: 8px;
+        height: 8px;
+        background-color: var(--success-color);
+        border-radius: 50%;
+        box-shadow: 0 0 8px var(--success-color);
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .fallback-card {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background-color: var(--bg-surface-elevated);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="redirect-visual">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="redirect-status">
+            <span class="pulse-dot"></span>
+            <span>Đang thiết lập phiên làm việc tại {{ client_name }}...</span>
+        </div>
+    </div>
+
+    <!-- Form POST Auto-Submit (Protects authorization code from Referer header leakage) -->
+    <form id="redirect-form" method="POST" action="{{ redirect_uri }}">
+        <input type="hidden" name="code" value="{{ code }}">
+        {% if let Some(s) = state %}
+            <input type="hidden" name="state" value="{{ s }}">
+        {% endif %}
+    </form>
+
+    <div class="fallback-card">
+        <p>
+            Trình duyệt không tự chuyển? 
+            <button type="submit" form="redirect-form" class="btn-link" id="manual-redirect-btn">
+                Nhấn vào đây để chuyển ngay &rarr;
+            </button>
+        </p>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function() {
+        const form = document.getElementById('redirect-form');
+        if (form) {
+            // Auto submit immediately to avoid exposing authorization code in URL / Referer
+            form.submit();
+        }
+    })();
+</script>
+{% endblock %}

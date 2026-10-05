@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if success %}
+        Xác minh thành công - IdP Portal
+    {% else %}
+        Xác minh thất bại - IdP Portal
+    {% endif %}
+{% endblock %}
+
+{% block page_heading %}
+    {% if success %}
+        Xác thực thành công!
+    {% else %}
+        Xác thực thất bại
+    {% endif %}
+{% endblock %}
+
+{% block page_subheading %}
+    {% if success %}
+        Tài khoản của bạn đã được kích hoạt và sẵn sàng sử dụng
+    {% else %}
+        Không thể hoàn tất quá trình xác thực tài khoản
+    {% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+    .result-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 72px;
+        height: 72px;
+        border-radius: var(--radius-full);
+        margin: 1rem auto 1.5rem auto;
+    }
+
+    .result-badge.badge-success {
+        background-color: var(--success-bg);
+        border: 2px solid var(--success-color);
+        color: var(--success-color);
+        box-shadow: 0 0 25px rgba(16, 185, 129, 0.25);
+    }
+
+    .result-badge.badge-error {
+        background-color: var(--error-bg);
+        border: 2px solid var(--error-color);
+        color: var(--error-color);
+        box-shadow: 0 0 25px rgba(239, 68, 68, 0.25);
+    }
+
+    .result-badge svg {
+        width: 40px;
+        height: 40px;
+    }
+
+    .result-description {
+        font-size: 0.9375rem;
+        color: var(--text-secondary);
+        margin-bottom: 2rem;
+        line-height: 1.6;
+        text-align: center;
+    }
+
+    .action-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div style="text-align: center;">
+        {% if success %}
+            <!-- SUCCESS VARIANT -->
+            <div class="result-badge badge-success">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+            </div>
+
+            <p class="result-description">
+                Tài khoản định danh của bạn đã được xác thực an toàn. Bạn có thể sử dụng thông tin đăng nhập này để truy cập tất cả dịch vụ trong hệ sinh thái.
+            </p>
+
+            <div class="action-group">
+                <a href="/login" class="btn btn-primary">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                    </svg>
+                    Đăng nhập ngay
+                </a>
+            </div>
+        {% else %}
+            <!-- FAILURE VARIANT -->
+            <div class="result-badge badge-error">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </div>
+
+            <!-- Specific failure reasons -->
+            <p class="result-description">
+                {% if reason == "expired" %}
+                    <strong>Mã xác thực đã hết hạn:</strong> Đường link hoặc mã OTP đã vượt quá thời hạn sử dụng cho phép vì lý do bảo mật. Vui lòng yêu cầu mã xác minh mới.
+                {% else if reason == "used" %}
+                    <strong>Mã đã được sử dụng:</strong> Liên kết hoặc mã OTP này đã được kích hoạt trước đó. Nếu bạn đã có tài khoản, vui lòng tiến hành đăng nhập.
+                {% else %}
+                    <strong>Mã không hợp lệ:</strong> Liên kết hoặc mã xác thực không tồn tại trong hệ thống hoặc đã bị thay đổi không chính xác.
+                {% endif %}
+            </p>
+
+            <div class="action-group">
+                <a href="/verify-email" class="btn btn-primary">
+                    Thử lại xác minh
+                </a>
+                <a href="/register" class="btn btn-secondary">
+                    Quay về trang Đăng ký
+                </a>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

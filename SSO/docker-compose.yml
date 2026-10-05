@@ -1,24 +1,27 @@
-version: '3.8'
 services:
   surrealdb:
-    image: surrealdb/surreal:latest
+    image: surrealdb/surrealdb:latest
     container_name: surrealdb
     ports:
-      - "8000:8000" # HTTP
-      - "9000:9000" # HTTP (optional)
-      - "8080:8080" # WS
+      - "8000:8000" # HTTP + WebSocket (SurrealDB serves both on the same port)
     environment:
       SURREAL_ENV: "dev"
       SURREAL_KV: "memory"
-    command: start --user root --pass root --file /surreal/data
-    volumes:
-      - ./surreal_data:/surreal/data
+    command: start --user root --pass root memory
 
   redis:
     image: redis:7
     container_name: redis
     ports:
       - "6379:6379"
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit
+    ports:
+      - "1025:1025"   # SMTP — point SMTP_SERVER here
+      - "8025:8025"   # Web UI to read captured emails
+
 
   server:
     build: .
@@ -28,7 +31,7 @@ services:
       - redis
     environment:
       SURREALDB_HOST: surrealdb
-      SURREALDB_PORT: 8080
+      SURREALDB_PORT: 8000
       SURREALDB_USERNAME: root
       SURREALDB_PASSWORD: root
       SURREALDB_NAMESPACE: test

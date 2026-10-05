@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}Xác thực email - IdP Portal{% endblock %}
+
+{% block page_heading %}Kiểm tra hộp thư của bạn{% endblock %}
+{% block page_subheading %}Chúng tôi đã gửi đường dẫn kích hoạt tài khoản qua email{% endblock %}
+
+{% block head %}
+<style>
+    .email-status-card {
+        text-align: center;
+        padding: 1rem 0.5rem 0.5rem 0.5rem;
+    }
+
+    .mail-icon-pulse {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(147, 51, 234, 0.15));
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: var(--primary);
+        margin-bottom: 1.25rem;
+        box-shadow: 0 0 25px rgba(59, 130, 246, 0.2);
+        animation: gentle-pulse 2.5s infinite ease-in-out;
+    }
+
+    @keyframes gentle-pulse {
+        0%, 100% {
+            transform: scale(1);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+        }
+        50% {
+            transform: scale(1.04);
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.35);
+        }
+    }
+
+    .email-badge {
+        display: inline-block;
+        margin: 0.5rem 0 1rem 0;
+        padding: 0.5rem 1rem;
+        background: var(--bg-input);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-full);
+        color: var(--text-primary);
+        font-weight: 600;
+        font-size: 0.95rem;
+        word-break: break-all;
+    }
+
+    .verify-instructions {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        line-height: 1.6;
+        margin-bottom: 1rem;
+    }
+
+    .resend-section {
+        margin-top: 1.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--border-subtle);
+        text-align: center;
+    }
+
+    .resend-prompt {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        margin-bottom: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <!-- Error states with differentiated messages -->
+    {% if let Some(err) = error_type %}
+        {% if *err == "expired" %}
+            <div class="alert alert-warning" role="alert">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px; flex-shrink: 0;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <strong>Mã đã hết hạn</strong>
+                    <p style="margin-top: 0.25rem;">Liên kết xác thực của bạn đã hết hạn. Vui lòng bấm <strong>"Gửi lại email xác thực"</strong> bên dưới để nhận liên kết mới.</p>
+                </div>
+            </div>
+        {% else if *err == "invalid" %}
+            <div class="alert alert-error" role="alert">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px; flex-shrink: 0;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <div>
+                    <strong>Liên kết không hợp lệ</strong>
+                    <p style="margin-top: 0.25rem;">Mã hoặc liên kết xác thực không đúng. Vui lòng kiểm tra lại email mới nhất hoặc gửi lại mã.</p>
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-error" role="alert">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px; flex-shrink: 0;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <div>
+                    <strong>Lỗi xác thực</strong>
+                    <p style="margin-top: 0.25rem;">{{ err }}</p>
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+
+    {% if let Some(info) = info_message %}
+        <div class="alert alert-success" role="status">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px; flex-shrink: 0;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{{ info }}</span>
+        </div>
+    {% endif %}
+
+    <div class="email-status-card">
+        <div class="mail-icon-pulse">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" style="width: 38px; height: 38px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+            </svg>
+        </div>
+
+        <p class="verify-instructions" style="margin-bottom: 0.25rem;">
+            Một email xác nhận kèm đường dẫn kích hoạt đã được gửi tới:
+        </p>
+
+        {% if !email.is_empty() %}
+            <div class="email-badge">{{ email }}</div>
+        {% endif %}
+
+        <p class="verify-instructions">
+            Vui lòng kiểm tra hộp thư đến (hoặc thư mục Spam) và nhấn vào đường link xác thực để kích hoạt tài khoản.
+        </p>
+    </div>
+
+    <!-- Resend Code Section with 60s countdown -->
+    <div class="resend-section">
+        <p class="resend-prompt">Chưa nhận được email hoặc liên kết đã hết hạn?</p>
+        <form id="resend-form" action="/resend-code" method="POST" style="margin: 0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="email" id="resend-email" value="{{ email }}">
+            <button 
+                type="submit" 
+                id="btn-resend" 
+                class="btn btn-secondary" 
+                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;"
+                disabled
+            >
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span>Gửi lại email xác thực (<span id="countdown">60</span>s)</span>
+            </button>
+        </form>
+    </div>
+
+    <p class="auth-switch" style="margin-top: 1.5rem;">
+        <a href="/login">&larr; Quay lại trang Đăng nhập</a>
+    </p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function() {
+        const resendBtn = document.getElementById('btn-resend');
+        const countdownSpan = document.getElementById('countdown');
+        let timeLeft = 60;
+
+        if (resendBtn && countdownSpan) {
+            const timerInterval = setInterval(function() {
+                timeLeft -= 1;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    resendBtn.disabled = false;
+                    resendBtn.innerHTML = `
+                        <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                        <span>Gửi lại email xác thực</span>
+                    `;
+                } else {
+                    countdownSpan.textContent = timeLeft;
+                }
+            }, 1000);
+        }
+    })();
+</script>
+{% endblock %}
