@@ -49,7 +49,7 @@ pub struct AuthConfig {
 
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
-        let host = env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let host = env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
         let port = env::var("SERVER_PORT")
             .ok()
             .and_then(|p| p.parse::<u16>().ok())

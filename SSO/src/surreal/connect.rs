@@ -15,7 +15,6 @@ pub async fn connect() -> anyhow::Result<Surreal<Client>> {
     let surreal_namespace =
         env::var("SURREALDB_NAMESPACE").context("SURREALDB_NAMESPACE not found")?;
     let surreal_dbname = env::var("SURREALDB_NAME").context("SURREALDB_NAME not found")?;
-    // Connect to the server
 
     let db = Surreal::new::<Ws>(format!("{}:{}", surreal_host, surreal_port)).await?;
 

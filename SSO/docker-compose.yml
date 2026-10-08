@@ -1,29 +1,38 @@
 services:
   surrealdb:
-    image: surrealdb/surrealdb:latest
+    image: surrealdb/surrealdb:v3.3.1
     container_name: surrealdb
+    restart: unless-stopped
+    user: root
+    command: >
+      start
+      --bind 0.0.0.0:8000
+      --user ${SURREALDB_USERNAME}
+      --pass ${SURREALDB_PASSWORD}
+      memory
+    env_file:
+      - .env
     ports:
-      - "8000:8000" # HTTP + WebSocket (SurrealDB serves both on the same port)
-    environment:
-      SURREAL_ENV: "dev"
-      SURREAL_KV: "memory"
-    command: start --user root --pass root --bind 0.0.0.0:8000 memory
+      - "8000:8000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health >/dev/null || exit 1"]
-      interval: 2s
-      timeout: 5s
+      test: ["CMD", "/surreal", "isready", "--endpoint", "http://localhost:8000"]
+      interval: 5s
+      timeout: 3s
       retries: 10
-      start_period: 5s
 
   redis:
     image: redis:7
     container_name: redis
+    env_file:
+      - .env
     ports:
       - "6379:6379"
 
   mailpit:
     image: axllent/mailpit
     container_name: mailpit
+    env_file:
+      - .env
     ports:
       - "1025:1025"   # SMTP — point SMTP_SERVER here
       - "8025:8025"   # Web UI to read captured emails
@@ -33,19 +42,12 @@ services:
     container_name: sso-server
     depends_on:
       surrealdb:
-        condition: service_healthy # Chờ SurrealDB báo Healthy mới chạy server
+        condition: service_healthy
       redis:
         condition: service_started
       mailpit:
         condition: service_started
-    environment:
-      SURREALDB_HOST: surrealdb
-      SURREALDB_PORT: 8000
-      SURREALDB_USERNAME: root
-      SURREALDB_PASSWORD: root
-      SURREALDB_NAMESPACE: test
-      SURREALDB_NAME: test
-      VERIFICATION_LINK: "http://localhost:3000/verify"
-      HOST_URL: "http://localhost:3000"
+    env_file:
+      - .env
     ports:
       - "3000:3000"
