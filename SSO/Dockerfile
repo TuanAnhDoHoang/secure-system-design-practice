@@ -1,4 +1,5 @@
 FROM rust:1.90-slim-bookworm AS builder
+#FROM rust:latest AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -10,9 +11,12 @@ RUN apt-get update && apt-get install -y \
     cmake \
     && rm -rf /var/lib/apt/lists/*
 
+RUN rustup toolchain install nightly && rustup default nightly
+
 # Cache dependencies
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+COPY templates ./templates
 
 RUN cargo build --release
 

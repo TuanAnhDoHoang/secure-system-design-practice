@@ -1,0 +1,22 @@
+/target/
+**/target/
+Cargo.lock
+
+# Rust build artifacts
+*.rs.bk
+*.pdb
+
+# IDE/editor config
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and local env
+*.log
+.env

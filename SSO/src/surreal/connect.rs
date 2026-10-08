@@ -2,7 +2,7 @@ use anyhow::Context;
 use std::env;
 
 use surrealdb::Surreal;
-use surrealdb::engine::remote::ws::{Client, Wss};
+use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::opt::auth::Root;
 
 pub async fn connect() -> anyhow::Result<Surreal<Client>> {
@@ -17,7 +17,7 @@ pub async fn connect() -> anyhow::Result<Surreal<Client>> {
     let surreal_dbname = env::var("SURREALDB_NAME").context("SURREALDB_NAME not found")?;
     // Connect to the server
 
-    let db = Surreal::new::<Wss>(format!("{}:{}", surreal_host, surreal_port)).await?;
+    let db = Surreal::new::<Ws>(format!("{}:{}", surreal_host, surreal_port)).await?;
 
     // Signin as a namespace, database, or root user
     db.signin(Root {

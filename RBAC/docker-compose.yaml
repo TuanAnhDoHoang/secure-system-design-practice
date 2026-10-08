@@ -1,0 +1,22 @@
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v3.3.1
+    container_name: surrealdb
+    restart: unless-stopped
+    user: root
+    command: >
+      start
+      --bind 0.0.0.0:8000
+      --user ${SURREALDB_USERNAME}
+      --pass ${SURREALDB_PASSWORD}
+      memory
+    environment:
+      SURREALDB_USERNAME: ${SURREALDB_USERNAME:-root}
+      SURREALDB_PASSWORD: ${SURREALDB_PASSWORD:-secret}
+    ports:
+      - "8000:8000"
+    volumes:
+      - surrealdb_data:/data
+
+volumes:
+  surrealdb_data:

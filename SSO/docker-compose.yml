@@ -7,7 +7,13 @@ services:
     environment:
       SURREAL_ENV: "dev"
       SURREAL_KV: "memory"
-    command: start --user root --pass root memory
+    command: start --user root --pass root --bind 0.0.0.0:8000 memory
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health >/dev/null || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   redis:
     image: redis:7
@@ -22,13 +28,16 @@ services:
       - "1025:1025"   # SMTP — point SMTP_SERVER here
       - "8025:8025"   # Web UI to read captured emails
 
-
   server:
     build: .
     container_name: sso-server
     depends_on:
-      - surrealdb
-      - redis
+      surrealdb:
+        condition: service_healthy # Chờ SurrealDB báo Healthy mới chạy server
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
     environment:
       SURREALDB_HOST: surrealdb
       SURREALDB_PORT: 8000
