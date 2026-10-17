@@ -65,6 +65,7 @@ pub struct LoginTemplate<'a> {
     pub email: &'a str,
     pub error_message: Option<&'a str>,
     pub success_message: Option<&'a str>,
+    pub return_to: Option<&'a str>,
 }
 
 #[derive(Template)]
@@ -87,6 +88,7 @@ pub struct LoginForm {
     pub csrf_token: String,
     pub email: String,
     pub password: String,
+    pub return_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -124,6 +126,7 @@ pub struct LoginQueryParams {
     pub email: Option<String>,
     pub info: Option<String>,
     pub error: Option<String>,
+    pub return_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -304,6 +307,7 @@ pub async fn login_ui_get(headers: HeaderMap, Query(query): Query<LoginQueryPara
         email: &email,
         error_message: query.error.as_deref(),
         success_message: query.info.as_deref(),
+        return_to: query.return_to.as_deref(),
     };
     render_template_response(template, StatusCode::OK, set_cookie)
 }
@@ -341,6 +345,7 @@ pub async fn login_ui_post(
             csrf_token: &csrf_token,
             email: &payload.email,
             error_message: Some(&msg),
+            return_to: payload.return_to.as_deref(),
             ..Default::default()
         };
         return render_template_response(template, status, set_cookie);
@@ -379,7 +384,12 @@ pub async fn login_ui_post(
             ))
             .unwrap_or_else(|_| HeaderValue::from_static(""));
 
-            let mut response = Redirect::to("/dashboard").into_response();
+            let redirect_target = payload
+                .return_to
+                .filter(|r| !r.is_empty() && r.starts_with('/'))
+                .unwrap_or_else(|| "/dashboard".to_string());
+
+            let mut response = Redirect::to(&redirect_target).into_response();
             response
                 .headers_mut()
                 .insert(header::SET_COOKIE, auth_cookie);
@@ -399,6 +409,7 @@ pub async fn login_ui_post(
                 csrf_token: &csrf_token,
                 email,
                 error_message: Some(&error_msg),
+                return_to: payload.return_to.as_deref(),
                 ..Default::default()
             };
             render_template_response(template, StatusCode::UNAUTHORIZED, set_cookie)
@@ -1077,6 +1088,7 @@ mod tests {
             email: "test@example.com",
             error_message: Some("Email hoặc mật khẩu không chính xác"),
             success_message: None,
+            return_to: None,
         };
         let html = template.render().expect("Render login template");
         assert!(html.contains("name=\"csrf_token\" value=\"csrf-test-token\""));

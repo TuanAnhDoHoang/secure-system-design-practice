@@ -51,3 +51,35 @@ services:
       - .env
     ports:
       - "3000:3000"
+
+  test-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: sso-test-client
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      - CLIENT_HOST=0.0.0.0
+      - CLIENT_PORT=4000
+      - SSO_URL=http://server:3000
+      - SSO_CLIENT_ID=test-client
+      - CLIENT_REDIRECT_URI=http://localhost:4000/callback
+      - SSO_SCOPE=openid email profile
+      - RUST_LOG=info
+    ports:
+      - "4000:4000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    depends_on:
+      - server
+      - test-client
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certs:/etc/nginx/certs

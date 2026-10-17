@@ -1,0 +1,89 @@
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:v3.3.1
+    container_name: surrealdb
+    restart: unless-stopped
+    user: root
+    command: >
+      start
+      --bind 0.0.0.0:8000
+      --user ${SURREALDB_USERNAME:-root}
+      --pass ${SURREALDB_PASSWORD:-root}
+      memory
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "/surreal", "isready", "--endpoint", "http://localhost:8000"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: redis
+    env_file:
+      - .env
+    ports:
+      - "6379:6379"
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit
+    env_file:
+      - .env
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Mailpit Web UI
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sso-server
+    restart: unless-stopped
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+
+  test-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: sso-test-client
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      - CLIENT_HOST=0.0.0.0
+      - CLIENT_PORT=4000
+      - SSO_URL=http://server:3000
+      - SSO_CLIENT_ID=test-client
+      - CLIENT_REDIRECT_URI=http://localhost:4000/callback
+      - SSO_SCOPE=openid email profile
+      - RUST_LOG=info
+    ports:
+      - "4000:4000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    depends_on:
+      - server
+      - test-client
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certs:/etc/nginx/certs

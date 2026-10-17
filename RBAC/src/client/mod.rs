@@ -2,6 +2,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+pub mod auth_handler;
+pub mod utils;
+
 #[derive(Serialize)]
 struct LoginRequest<'a> {
     username: &'a str,

@@ -1,0 +1,40 @@
+FROM rust:1.90-slim-bookworm AS builder
+WORKDIR /app
+
+# Install build dependencies (cmake is needed by aws-lc-rs)
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup toolchain install nightly && rustup default nightly
+
+# Copy source files
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY templates ./templates
+
+# Build only the test-client binary in release mode
+RUN cargo build --release --bin test-client
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/test-client /usr/local/bin/test-client
+
+ENV CLIENT_HOST=0.0.0.0
+ENV CLIENT_PORT=4000
+ENV SSO_URL=http://localhost:3000
+ENV SSO_CLIENT_ID=test-client
+ENV CLIENT_REDIRECT_URI=http://localhost:4000/callback
+ENV RUST_LOG=info
+
+EXPOSE 4000
+
+CMD ["/usr/local/bin/test-client"]

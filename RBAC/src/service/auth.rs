@@ -7,10 +7,10 @@ use crate::role::Role;
 pub struct NewUser {
     username: String,
     hash_password: String,
-    role: Role,
+    role: Vec<Role>,
 }
 impl NewUser {
-    pub fn new(username: String, hash_password: String, role: Role) -> Self {
+    pub fn new(username: String, hash_password: String, role: Vec<Role>) -> Self {
         Self {
             username,
             hash_password,

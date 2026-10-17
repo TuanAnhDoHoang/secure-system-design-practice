@@ -102,7 +102,7 @@ pub async fn register(
             "Got error while register".into(),
         )
     })?;
-    let new_user = NewUser::new(req.username, hash_password, Role::User);
+    let new_user = NewUser::new(req.username, hash_password, vec![Role::User]);
     let user_created: Option<UserInfo> =
         state
             .db

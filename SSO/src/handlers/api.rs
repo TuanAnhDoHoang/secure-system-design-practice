@@ -1,22 +1,26 @@
 use axum::{
-    Form, Json,
+    Extension, Form, Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use surrealdb::types::ToSql;
 
 use crate::{
-    db,
+    db::{self, find_user_by_email},
     error::AppError,
     models::{
-        AuthorizeParams, RegisterRequest, RegisterResponse, TokenRequest, TokenResponse,
+        AuthorizeParams, RegisterRequest, RegisterResponse, TokenRequest, TokenResponse, Users,
         VerifyQuery, VerifyResponse,
     },
     redis::{AuthCodeData, consume_auth_code, create_auth_code},
     services::AuthService,
     state::AppState,
-    utils::{self, CodeChallengeMethod, validate_code_challenge, validate_code_verifier, verify_pkce},
+    utils::{
+        self, CodeChallengeMethod, validate_code_challenge, validate_code_verifier, verify_pkce,
+    },
 };
 
 /// POST /api/register - API Endpoint đăng ký tài khoản (JSON payload)
@@ -79,13 +83,12 @@ pub async fn verify_token_api(
 /// 1. Validate response_type == "code"
 /// 2. Lookup client_id, kiểm tra redirect_uri hợp lệ
 /// 3. Nếu client require_pkce → bắt buộc code_challenge (S256)
-/// 4. Lưu auth_code + code_challenge vào Redis (TTL 10 phút)
-/// 5. Redirect về redirect_uri?code=...&state=...
-///
-/// TODO: Hiện tại bỏ qua xác thực user (cần middleware session).
-///       Trong production, phải đảm bảo user đã đăng nhập trước bước này.
+/// 4. Kiểm tra cookie xác thực người dùng (auth_token)
+///    - Nếu chưa đăng nhập: Trả về giao diện đăng nhập (LoginTemplate) kèm return_to
+///    - Nếu đã đăng nhập: Tạo auth_code lưu vào Redis và chuyển tiếp tới redirect_uri kèm code
 pub async fn authorize_api(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AppError> {
     // 1. Validate response_type
@@ -162,14 +165,59 @@ pub async fn authorize_api(
         }
     };
 
-    // 5. Tạo auth code và lưu vào Redis
-    // TODO: thay "demo_user" bằng user_id từ session thực
-    let user_id = "demo_user".to_string();
+    // 5. Kiểm tra cookie xác thực người dùng (auth_token)
+    let authenticated_user = if let Some(claim) = crate::handlers::ui::check_authenticated_user(&headers, &state.config.auth.jwt_secret) {
+        db::find_user_by_email(&state.db, &claim.sub)
+            .await
+            .map_err(|e| {
+                log::error!("DB error khi tìm user từ token: {:?}", e);
+                AppError::Internal(e.to_string())
+            })?
+    } else {
+        None
+    };
 
+    let user = match authenticated_user {
+        Some(u) => u,
+        None => {
+            // Chưa đăng nhập -> Trả về giao diện đăng nhập (login page) kèm return_to để sau khi đăng nhập sẽ tự động quay lại /authorize
+            let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+            serializer.append_pair("response_type", &params.response_type);
+            serializer.append_pair("client_id", &params.client_id);
+            serializer.append_pair("redirect_uri", &params.redirect_uri);
+            if !params.scope.is_empty() {
+                serializer.append_pair("scope", &params.scope);
+            }
+            if let Some(ref state_val) = params.state {
+                serializer.append_pair("state", state_val);
+            }
+            if let Some(ref challenge) = params.code_challenge {
+                serializer.append_pair("code_challenge", challenge);
+                serializer.append_pair("code_challenge_method", &params.code_challenge_method);
+            }
+            let return_to = format!("/authorize?{}", serializer.finish());
+
+            let (csrf_token, set_cookie) = crate::handlers::ui::get_or_generate_csrf(&headers);
+            let template = crate::handlers::ui::LoginTemplate {
+                csrf_token: &csrf_token,
+                email: "",
+                error_message: None,
+                success_message: None,
+                return_to: Some(&return_to),
+            };
+            return Ok(crate::handlers::ui::render_template_response(
+                template,
+                StatusCode::OK,
+                set_cookie,
+            ));
+        }
+    };
+
+    // 6. User đã đăng nhập -> Tạo auth code và lưu vào Redis (TTL 10 phút)
     let auth_code_data = AuthCodeData {
         client_id: client.client_id.clone(),
         redirect_uri: redirect_uri.clone(),
-        user_id,
+        user_id: user.email.clone(),
         code_challenge,
         code_challenge_method: challenge_method_str,
         scope: params.scope.clone(),
@@ -183,15 +231,16 @@ pub async fn authorize_api(
             AppError::Internal(e.to_string())
         })?;
 
-    // 6. Redirect về client với code (và state nếu có)
+    // 7. Redirect về redirect_uri của client kèm code (và state nếu có)
     let mut callback_url = format!("{}?code={}", redirect_uri, code);
     if let Some(state_val) = &params.state {
         callback_url.push_str(&format!("&state={}", state_val));
     }
 
     log::info!(
-        "PKCE authorize thành công: client_id={}, redirect={}",
+        "PKCE authorize thành công: client_id={}, user={}, redirect={}",
         client.client_id,
+        user.email,
         redirect_uri
     );
 
@@ -213,9 +262,7 @@ pub async fn token_api(
 ) -> Result<Json<TokenResponse>, AppError> {
     // 1. Validate grant_type
     if req.grant_type != "authorization_code" {
-        return Err(AppError::BadRequest(
-            "unsupported_grant_type".to_string(),
-        ));
+        return Err(AppError::BadRequest("unsupported_grant_type".to_string()));
     }
 
     // 2. Consume auth code từ Redis (xóa ngay sau khi lấy — chống replay)
@@ -226,7 +273,11 @@ pub async fn token_api(
             log::error!("Redis error khi lấy auth code: {:?}", e);
             AppError::Internal(e.to_string())
         })?
-        .ok_or_else(|| AppError::BadRequest("invalid_grant: auth code không hợp lệ hoặc đã hết hạn".to_string()))?;
+        .ok_or_else(|| {
+            AppError::BadRequest(
+                "invalid_grant: auth code không hợp lệ hoặc đã hết hạn".to_string(),
+            )
+        })?;
 
     // 3. Validate client_id và redirect_uri khớp với lúc /authorize
     if code_data.client_id != req.client_id {
@@ -260,9 +311,7 @@ pub async fn token_api(
     // 6. Verify PKCE nếu có code_challenge lưu từ bước /authorize
     if !code_data.code_challenge.is_empty() {
         let verifier = req.code_verifier.as_deref().ok_or_else(|| {
-            AppError::BadRequest(
-                "invalid_grant: code_verifier là bắt buộc".to_string(),
-            )
+            AppError::BadRequest("invalid_grant: code_verifier là bắt buộc".to_string())
         })?;
 
         if !validate_code_verifier(verifier) {
@@ -275,10 +324,7 @@ pub async fn token_api(
             .unwrap_or(CodeChallengeMethod::S256);
 
         if !verify_pkce(verifier, &code_data.code_challenge, &method) {
-            log::warn!(
-                "PKCE verification thất bại: client_id={}",
-                req.client_id
-            );
+            log::warn!("PKCE verification thất bại: client_id={}", req.client_id);
             return Err(AppError::BadRequest(
                 "invalid_grant: code_verifier không khớp với code_challenge".to_string(),
             ));
@@ -292,11 +338,13 @@ pub async fn token_api(
 
     // 7. Phát hành access_token (JWT HS512)
     let ttl_hours = (client.access_token_ttl / 3600).max(1) as i64;
-    let access_token = utils::create_jwt(&code_data.user_id, &state.config.auth.jwt_secret, ttl_hours)
-        .map_err(|e| {
-            log::error!("Lỗi tạo JWT: {:?}", e);
-            AppError::Internal(e.to_string())
-        })?;
+    let access_token =
+        utils::create_jwt(&code_data.user_id, &state.config.auth.jwt_secret, ttl_hours).map_err(
+            |e| {
+                log::error!("Lỗi tạo JWT: {:?}", e);
+                AppError::Internal(e.to_string())
+            },
+        )?;
 
     log::info!(
         "Token issued: client_id={}, user_id={}",
@@ -318,11 +366,50 @@ pub async fn token_api(
 }
 
 /// GET /userinfo - OIDC Userinfo endpoint
-pub async fn userinfo_api() -> Result<(StatusCode, String), AppError> {
-    Ok((
-        StatusCode::NOT_IMPLEMENTED,
-        "Userinfo endpoint under construction".to_string(),
-    ))
+#[derive(Deserialize)]
+pub struct UserInfoRequest {
+    pub access_token: String,
+}
+
+#[derive(Serialize)]
+pub struct UserInfoResponse {
+    pub sub: String,
+    pub email: String,
+    pub email_verified: bool,
+    pub name: Option<String>,
+    pub preferred_username: Option<String>,
+    pub picture: Option<String>,
+}
+pub async fn userinfo_api(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<Users>,
+    Json(req): Json<UserInfoRequest>,
+) -> Result<(StatusCode, Json<UserInfoResponse>), AppError> {
+    let claim = crate::utils::verify_jwt(&req.access_token, &state.config.auth.jwt_secret)
+        .map_err(|_| AppError::Unauthorized("Token is not authorized".to_string()))?;
+    let user_email = claim.sub;
+    let user_opt = find_user_by_email(&state.db, &user_email)
+        .await
+        .map_err(|_| AppError::Internal("Failed to find user".to_string()))?;
+
+    if let Some(stored_user) = user_opt {
+        if user.id == stored_user.id {
+            // User is authenticated and the IDs match
+            let response = UserInfoResponse {
+                sub: stored_user.id.to_sql(),
+                email: stored_user.email,
+                email_verified: true,
+                name: None,               // TODO: add name field to Users model
+                preferred_username: None, // TODO: add preferred_username field to Users model
+                picture: None,            // TODO: add picture field to Users model
+            };
+            Ok((StatusCode::OK, Json(response)))
+        } else {
+            return Err(AppError::Unauthorized("User not found".to_string()));
+        }
+    } else {
+        return Err(AppError::Unauthorized("User not found".to_string()));
+    }
 }
 
 /// GET /.well-know/jwks.json - JWKS public keys
@@ -346,3 +433,43 @@ pub async fn logout_api() -> Result<(StatusCode, String), AppError> {
     revoke_api().await
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_authorize_return_to_url_construction() {
+        let params = AuthorizeParams {
+            response_type: "code".to_string(),
+            client_id: "test-client".to_string(),
+            redirect_uri: "http://localhost:3000/callback".to_string(),
+            scope: "openid email".to_string(),
+            state: Some("xyz-state".to_string()),
+            code_challenge: Some("challenge123".to_string()),
+            code_challenge_method: "S256".to_string(),
+        };
+
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        serializer.append_pair("response_type", &params.response_type);
+        serializer.append_pair("client_id", &params.client_id);
+        serializer.append_pair("redirect_uri", &params.redirect_uri);
+        if !params.scope.is_empty() {
+            serializer.append_pair("scope", &params.scope);
+        }
+        if let Some(ref state_val) = params.state {
+            serializer.append_pair("state", state_val);
+        }
+        if let Some(ref challenge) = params.code_challenge {
+            serializer.append_pair("code_challenge", challenge);
+            serializer.append_pair("code_challenge_method", &params.code_challenge_method);
+        }
+        let return_to = format!("/authorize?{}", serializer.finish());
+
+        assert!(return_to.contains("/authorize?"));
+        assert!(return_to.contains("client_id=test-client"));
+        assert!(return_to.contains("redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fcallback"));
+        assert!(return_to.contains("code_challenge=challenge123"));
+        assert!(return_to.contains("code_challenge_method=S256"));
+        assert!(return_to.contains("state=xyz-state"));
+    }
+}

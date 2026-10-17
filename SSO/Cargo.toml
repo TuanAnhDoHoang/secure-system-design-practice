@@ -24,3 +24,13 @@ sha2 = "0.10"
 surrealdb = { version = "3.3.1", features = ["protocol-ws"] }
 tokio = { version = "1.53.1", features = ["full"] }
 uuid = { version = "1.8.0", features = ["v4", "serde"] }
+url = "2.5"
+reqwest = { version = "0.12", features = ["json", "cookies"] }
+
+[[bin]]
+name = "idp"
+path = "src/main.rs"
+
+[[bin]]
+name = "client"
+path = "src/client/main.rs"

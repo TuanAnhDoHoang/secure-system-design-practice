@@ -84,6 +84,9 @@
     <form action="/login" method="POST" autocomplete="on">
         <!-- Hidden CSRF Token Field -->
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if let Some(ret) = return_to %}
+            <input type="hidden" name="return_to" value="{{ ret }}">
+        {% endif %}
 
         <!-- Email Field -->
         <div class="form-group">
